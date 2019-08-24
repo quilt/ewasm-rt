@@ -1,4 +1,4 @@
-# Rune
+# ewasm-runtime
 
 A modular WebAssembly runtime for Ethereum 2.0.
 
