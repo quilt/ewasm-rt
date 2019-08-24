@@ -1,7 +1,7 @@
 [package]
 name = "rune"
 version = "0.1.0"
-authors = ["Matt Garnett <14004106+lightclient@users.noreply.github.com>"]
+authors = ["Alex Beregszaszi <alex@rtfs.hu>", "Matt Garnett <14004106+lightclient@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
