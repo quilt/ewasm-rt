@@ -3,6 +3,7 @@ use crate::resolver::{
     PUSHNEWDEPOSIT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX, USETICKS_FUNC_INDEX,
 };
 use crate::runtime::Runtime;
+use log::debug;
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap, TrapKind};
 
 impl<'a> Externals for Runtime<'a> {
@@ -23,7 +24,7 @@ impl<'a> Externals for Runtime<'a> {
             }
             LOADPRESTATEROOT_FUNC_INDEX => {
                 let ptr: u32 = args.nth(0);
-                dbg!("loadprestateroot to {}", ptr);
+                debug!("loadprestateroot to {}", ptr);
 
                 // TODO: add checks for out of bounds access
                 let memory = self.memory.as_ref().expect("expects memory object");
@@ -35,7 +36,7 @@ impl<'a> Externals for Runtime<'a> {
             }
             SAVEPOSTSTATEROOT_FUNC_INDEX => {
                 let ptr: u32 = args.nth(0);
-                dbg!("savepoststateroot from {}", ptr);
+                debug!("savepoststateroot from {}", ptr);
 
                 // TODO: add checks for out of bounds access
                 let memory = self.memory.as_ref().expect("expects memory object");
@@ -47,18 +48,16 @@ impl<'a> Externals for Runtime<'a> {
             }
             BLOCKDATASIZE_FUNC_INDEX => {
                 let ret: i32 = self.data.len() as i32;
-                dbg!("blockdatasize {}", ret);
+                debug!("blockdatasize {}", ret);
                 Ok(Some(ret.into()))
             }
             BLOCKDATACOPY_FUNC_INDEX => {
                 let ptr: u32 = args.nth(0);
                 let offset: u32 = args.nth(1);
                 let length: u32 = args.nth(2);
-                dbg!(
+                debug!(
                     "blockdatacopy to {} from {} for {} bytes",
-                    ptr,
-                    offset,
-                    length
+                    ptr, offset, length
                 );
 
                 // TODO: add overflow check
