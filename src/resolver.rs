@@ -6,8 +6,6 @@ pub const LOADPRESTATEROOT_FUNC_INDEX: usize = 0;
 pub const BLOCKDATASIZE_FUNC_INDEX: usize = 1;
 pub const BLOCKDATACOPY_FUNC_INDEX: usize = 2;
 pub const SAVEPOSTSTATEROOT_FUNC_INDEX: usize = 3;
-pub const PUSHNEWDEPOSIT_FUNC_INDEX: usize = 4;
-pub const USETICKS_FUNC_INDEX: usize = 5;
 
 pub struct RuntimeModuleImportResolver;
 
@@ -18,10 +16,6 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
         _signature: &Signature,
     ) -> Result<FuncRef, InterpreterError> {
         let func_ref = match field_name {
-            "eth2_useTicks" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], None),
-                USETICKS_FUNC_INDEX,
-            ),
             "eth2_loadPreStateRoot" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], None),
                 LOADPRESTATEROOT_FUNC_INDEX,
@@ -37,10 +31,6 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
             "eth2_savePostStateRoot" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], None),
                 SAVEPOSTSTATEROOT_FUNC_INDEX,
-            ),
-            "eth2_pushNewDeposit" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], None),
-                PUSHNEWDEPOSIT_FUNC_INDEX,
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(
