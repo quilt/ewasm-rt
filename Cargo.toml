@@ -9,5 +9,6 @@ keywords = ["ethereum", "webassembly", "ewasm"]
 edition = "2018"
 
 [dependencies]
+wabt = "0.9.2"
 wasmi = "0.5.0"
 log = "0.4.8"

@@ -7,7 +7,6 @@ pub struct Runtime<'a> {
     pub(crate) data: &'a [u8],
     pub(crate) pre_root: [u8; 32],
     pub(crate) post_root: [u8; 32],
-    pub(crate) ticks_left: u32,
     pub(crate) memory: Option<MemoryRef>,
 }
 
@@ -18,7 +17,6 @@ impl<'a> Runtime<'a> {
             data,
             pre_root,
             post_root: [0u8; 32],
-            ticks_left: 999,
             memory: None,
         }
     }

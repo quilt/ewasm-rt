@@ -1,10 +1,10 @@
 use crate::resolver::{
     BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX, LOADPRESTATEROOT_FUNC_INDEX,
-    PUSHNEWDEPOSIT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX, USETICKS_FUNC_INDEX,
+    SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
 use crate::runtime::Runtime;
 use log::debug;
-use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap, TrapKind};
+use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 impl<'a> Externals for Runtime<'a> {
     fn invoke_index(
@@ -13,15 +13,6 @@ impl<'a> Externals for Runtime<'a> {
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
         match index {
-            USETICKS_FUNC_INDEX => {
-                let ticks: u32 = args.nth(0);
-                if self.ticks_left < ticks {
-                    // FIXME: use TrapKind::Host
-                    return Err(Trap::new(TrapKind::Unreachable));
-                }
-                self.ticks_left -= ticks;
-                Ok(None)
-            }
             LOADPRESTATEROOT_FUNC_INDEX => {
                 let ptr: u32 = args.nth(0);
                 debug!("loadprestateroot to {}", ptr);
@@ -72,7 +63,6 @@ impl<'a> Externals for Runtime<'a> {
 
                 Ok(None)
             }
-            PUSHNEWDEPOSIT_FUNC_INDEX => unimplemented!(),
             _ => panic!("unknown function index"),
         }
     }
