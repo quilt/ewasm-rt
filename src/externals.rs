@@ -67,3 +67,101 @@ impl<'a> Externals for Runtime<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use wasmi::memory_units::Pages;
+    use wasmi::{MemoryInstance, MemoryRef};
+
+    fn build_root(n: u8) -> [u8; 32] {
+        let mut ret = [0u8; 32];
+        ret[0] = n;
+        ret
+    }
+
+    fn build_runtime<'a>(data: &'a [u8], pre_root: [u8; 32], memory: MemoryRef) -> Runtime<'a> {
+        Runtime {
+            code: &[],
+            data: data,
+            pre_root,
+            post_root: [0; 32],
+            memory: Some(memory),
+        }
+    }
+
+    #[test]
+    fn load_pre_state_root() {
+        let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
+        let mut runtime = build_runtime(&[], build_root(42), memory);
+
+        assert!(Externals::invoke_index(
+            &mut runtime,
+            LOADPRESTATEROOT_FUNC_INDEX,
+            [0.into()][..].into()
+        )
+        .is_ok());
+
+        assert_eq!(runtime.memory.unwrap().get(0, 32).unwrap(), build_root(42));
+    }
+
+    #[test]
+    fn save_post_state_root() {
+        let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
+        memory.set(100, &build_root(42)).expect("sets memory");
+
+        let mut runtime = build_runtime(&[], build_root(0), memory);
+
+        assert!(Externals::invoke_index(
+            &mut runtime,
+            SAVEPOSTSTATEROOT_FUNC_INDEX,
+            [100.into()][..].into()
+        )
+        .is_ok());
+
+        assert_eq!(
+            runtime.memory.unwrap().get(100, 32).unwrap(),
+            build_root(42)
+        );
+    }
+
+    #[test]
+    fn block_data_size() {
+        let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
+        let mut runtime = build_runtime(&[1; 42], build_root(0), memory);
+
+        assert_eq!(
+            Externals::invoke_index(&mut runtime, BLOCKDATASIZE_FUNC_INDEX, [][..].into())
+                .unwrap()
+                .unwrap(),
+            42.into()
+        );
+    }
+
+    #[test]
+    fn block_data_copy() {
+        let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
+        let data: Vec<u8> = (1..21).collect();
+        let mut runtime = build_runtime(&data, build_root(0), memory);
+
+        assert!(Externals::invoke_index(
+            &mut runtime,
+            BLOCKDATACOPY_FUNC_INDEX,
+            [1.into(), 0.into(), 20.into()][..].into()
+        )
+        .is_ok());
+
+        assert!(Externals::invoke_index(
+            &mut runtime,
+            BLOCKDATACOPY_FUNC_INDEX,
+            [23.into(), 10.into(), 20.into()][..].into()
+        )
+        .is_ok());
+
+        // This checks that the entire data blob was loaded into memory.
+        assert_eq!(runtime.clone().memory.unwrap().get(1, 20).unwrap(), data);
+
+        // This checks that the data after the offset was loaded into memory.
+        assert_eq!(runtime.memory.unwrap().get(23, 10).unwrap()[..], data[10..]);
+    }
+}
