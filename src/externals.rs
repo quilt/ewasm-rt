@@ -1,5 +1,5 @@
 use crate::resolver::{
-    BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX, BUFFERGET_FUNC_INDEX,
+    BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX, BUFFERGET_FUNC_INDEX, BUFFERSET_FUNC_INDEX,
     LOADPRESTATEROOT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
 use crate::runtime::{BufferKey, Runtime};
@@ -92,6 +92,32 @@ impl<'a> Externals for Runtime<'a> {
                 } else {
                     Ok(Some(1.into()))
                 }
+            }
+            BUFFERSET_FUNC_INDEX => {
+                let frame: u32 = args.nth(0);
+                let key_ptr: u32 = args.nth(1);
+                let value_ptr: u32 = args.nth(2);
+
+                debug!(
+                    "bufferset for frame {} with key at {} and value at {}",
+                    frame, key_ptr, value_ptr
+                );
+
+                // TODO: add overflow check
+                let frame = frame as u8;
+
+                // TODO: add checks for out of bounds access
+                let memory = self.memory.as_ref().expect("expects memory object");
+
+                let key = memory.get(key_ptr, 32).expect("read to suceed");
+                let key = *array_ref![key, 0, 32];
+
+                let value = memory.get(value_ptr, 32).expect("read to suceed");
+                let value = *array_ref![value, 0, 32];
+
+                self.buffer.insert(BufferKey(frame, key), value);
+
+                Ok(None)
             }
             _ => panic!("unknown function index"),
         }
@@ -225,6 +251,27 @@ mod test {
         assert_eq!(
             runtime.clone().memory.unwrap().get(32, 32).unwrap(),
             build_root(42)
+        );
+    }
+
+    #[test]
+    fn buffer_set() {
+        let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
+        memory.set(0, &[1u8; 32]).unwrap();
+        memory.set(32, &[2u8; 32]).unwrap();
+
+        let mut runtime = build_runtime(&[], build_root(0), memory, HashMap::new());
+
+        assert!(Externals::invoke_index(
+            &mut runtime,
+            BUFFERSET_FUNC_INDEX,
+            [0.into(), 0.into(), 32.into()][..].into()
+        )
+        .is_ok());
+
+        assert_eq!(
+            runtime.buffer.get(&BufferKey(0, [1u8; 32])),
+            Some(&[2u8; 32])
         );
     }
 }
