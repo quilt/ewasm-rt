@@ -1,3 +1,4 @@
+mod buffer;
 mod execute;
 mod externals;
 mod resolver;

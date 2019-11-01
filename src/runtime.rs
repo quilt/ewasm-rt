@@ -1,10 +1,7 @@
+use crate::buffer::Buffer;
 use crate::execute::Execute;
 use crate::resolver::RuntimeModuleImportResolver;
-use std::collections::HashMap;
 use wasmi::{ImportsBuilder, MemoryRef, Module, ModuleInstance};
-
-#[derive(Clone, Eq, Hash, PartialEq)]
-pub struct BufferKey(pub u8, pub [u8; 32]);
 
 #[derive(Clone)]
 pub struct Runtime<'a> {
@@ -13,7 +10,7 @@ pub struct Runtime<'a> {
     pub(crate) pre_root: [u8; 32],
     pub(crate) post_root: [u8; 32],
     pub(crate) memory: Option<MemoryRef>,
-    pub(crate) buffer: HashMap<BufferKey, [u8; 32]>,
+    pub(crate) buffer: Buffer,
 }
 
 impl<'a> Runtime<'a> {
@@ -24,7 +21,7 @@ impl<'a> Runtime<'a> {
             pre_root,
             post_root: [0u8; 32],
             memory: None,
-            buffer: HashMap::new(),
+            buffer: Buffer::default(),
         }
     }
 }
