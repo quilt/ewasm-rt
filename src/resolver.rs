@@ -6,6 +6,9 @@ pub const LOADPRESTATEROOT_FUNC_INDEX: usize = 0;
 pub const BLOCKDATASIZE_FUNC_INDEX: usize = 1;
 pub const BLOCKDATACOPY_FUNC_INDEX: usize = 2;
 pub const SAVEPOSTSTATEROOT_FUNC_INDEX: usize = 3;
+pub const BUFFERGET_FUNC_INDEX: usize = 4;
+pub const BUFFERSET_FUNC_INDEX: usize = 5;
+pub const BUFFERMERGE_FUNC_INDEX: usize = 6;
 
 pub struct RuntimeModuleImportResolver;
 
@@ -31,6 +34,21 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
             "eth2_savePostStateRoot" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], None),
                 SAVEPOSTSTATEROOT_FUNC_INDEX,
+            ),
+            "eth2_bufferGet" => FuncInstance::alloc_host(
+                Signature::new(
+                    &[ValueType::I32, ValueType::I32, ValueType::I32][..],
+                    Some(ValueType::I32),
+                ),
+                BUFFERGET_FUNC_INDEX,
+            ),
+            "eth2_bufferSet" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
+                BUFFERSET_FUNC_INDEX,
+            ),
+            "eth2_bufferMerge" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                BUFFERMERGE_FUNC_INDEX,
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(
