@@ -137,7 +137,6 @@ fn buffer_merge() {
             (drop)
             (drop)
 
-
             ;; Store the result of buffer[0,1] + buffer[0,2] + buffer[0,4] at mem[342]
             (i32.store 
                 (i32.const 342)
