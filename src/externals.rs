@@ -1,6 +1,7 @@
 use crate::resolver::{
-    BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX, BUFFERGET_FUNC_INDEX, BUFFERSET_FUNC_INDEX,
-    LOADPRESTATEROOT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
+    BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX, BUFFERGET_FUNC_INDEX,
+    BUFFERMERGE_FUNC_INDEX, BUFFERSET_FUNC_INDEX, LOADPRESTATEROOT_FUNC_INDEX,
+    SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
 use crate::runtime::Runtime;
 use arrayref::array_ref;
@@ -116,6 +117,20 @@ impl<'a> Externals for Runtime<'a> {
                 let value = *array_ref![value, 0, 32];
 
                 self.buffer.insert(frame, key, value);
+
+                Ok(None)
+            }
+            BUFFERMERGE_FUNC_INDEX => {
+                let frame_a: u32 = args.nth(0);
+                let frame_b: u32 = args.nth(1);
+
+                debug!("buffermerge frame {} into frame {}", frame_b, frame_a);
+
+                // TODO: add overflow check
+                let frame_a = frame_a as u8;
+                let frame_b = frame_b as u8;
+
+                self.buffer.merge(frame_a, frame_b);
 
                 Ok(None)
             }
@@ -270,5 +285,31 @@ mod test {
         .is_ok());
 
         assert_eq!(runtime.buffer.get(0, [1u8; 32]), Some(&[2u8; 32]));
+    }
+
+    #[test]
+    fn buffer_merge() {
+        let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
+        let mut buffer = Buffer::default();
+
+        buffer.insert(1, [0u8; 32], [0u8; 32]);
+        buffer.insert(1, [1u8; 32], [1u8; 32]);
+        buffer.insert(2, [2u8; 32], [2u8; 32]);
+        buffer.insert(2, [0u8; 32], [3u8; 32]);
+
+        let mut runtime = build_runtime(&[], build_root(0), memory, buffer);
+
+        assert!(Externals::invoke_index(
+            &mut runtime,
+            BUFFERMERGE_FUNC_INDEX,
+            [1.into(), 2.into()][..].into()
+        )
+        .is_ok());
+
+        assert_eq!(runtime.buffer.get(1, [0u8; 32]), Some(&[3u8; 32]));
+        assert_eq!(runtime.buffer.get(1, [1u8; 32]), Some(&[1u8; 32]));
+        assert_eq!(runtime.buffer.get(1, [2u8; 32]), Some(&[2u8; 32]));
+        assert_eq!(runtime.buffer.get(2, [0u8; 32]), Some(&[3u8; 32]));
+        assert_eq!(runtime.buffer.get(2, [2u8; 32]), Some(&[2u8; 32]));
     }
 }
