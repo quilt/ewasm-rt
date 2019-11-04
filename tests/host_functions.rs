@@ -90,7 +90,7 @@ fn block_data_copy() {
 }
 
 #[test]
-fn get_and_set_buffer() {
+fn buffer_get_and_set() {
     let code = compile_wat(
         r#"
             (i32.store (i32.const 32) (i32.const 42))
@@ -107,7 +107,7 @@ fn get_and_set_buffer() {
 }
 
 #[test]
-fn merge_buffer() {
+fn buffer_merge() {
     let code = compile_wat(
         r#"
             (i32.store (i32.const 0) (i32.const 1))
@@ -159,7 +159,7 @@ fn merge_buffer() {
 }
 
 #[test]
-fn clear_buffer() {
+fn buffer_clear() {
     let code = compile_wat(
         r#"
             (i32.store (i32.const 0) (i32.const 2))
