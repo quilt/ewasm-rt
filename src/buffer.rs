@@ -35,6 +35,10 @@ impl Buffer {
             Rc::get_mut(a).unwrap().insert(*key, *value);
         }
     }
+
+    pub fn clear(&mut self, frame: u8) {
+        self.map.remove(&frame);
+    }
 }
 
 #[cfg(test)]

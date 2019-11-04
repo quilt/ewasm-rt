@@ -9,6 +9,7 @@ pub const SAVEPOSTSTATEROOT_FUNC_INDEX: usize = 3;
 pub const BUFFERGET_FUNC_INDEX: usize = 4;
 pub const BUFFERSET_FUNC_INDEX: usize = 5;
 pub const BUFFERMERGE_FUNC_INDEX: usize = 6;
+pub const BUFFERCLEAR_FUNC_INDEX: usize = 7;
 
 pub struct RuntimeModuleImportResolver;
 
@@ -23,6 +24,10 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32][..], None),
                 LOADPRESTATEROOT_FUNC_INDEX,
             ),
+            "eth2_savePostStateRoot" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], None),
+                SAVEPOSTSTATEROOT_FUNC_INDEX,
+            ),
             "eth2_blockDataSize" => FuncInstance::alloc_host(
                 Signature::new(&[][..], Some(ValueType::I32)),
                 BLOCKDATASIZE_FUNC_INDEX,
@@ -30,10 +35,6 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
             "eth2_blockDataCopy" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
                 BLOCKDATACOPY_FUNC_INDEX,
-            ),
-            "eth2_savePostStateRoot" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], None),
-                SAVEPOSTSTATEROOT_FUNC_INDEX,
             ),
             "eth2_bufferGet" => FuncInstance::alloc_host(
                 Signature::new(
@@ -47,8 +48,12 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
                 BUFFERSET_FUNC_INDEX,
             ),
             "eth2_bufferMerge" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32, ValueType::I32][..], None),
                 BUFFERMERGE_FUNC_INDEX,
+            ),
+            "eth2_bufferClear" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], None),
+                BUFFERCLEAR_FUNC_INDEX,
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(
