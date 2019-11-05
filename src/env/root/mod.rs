@@ -1,14 +1,17 @@
+mod resolver;
+
 use arrayref::array_ref;
 
 use crate::buffer::Buffer;
 use crate::execute::Execute;
-use crate::resolver::{
+
+use log::debug;
+
+use self::resolver::{
     RuntimeModuleImportResolver, BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX,
     BUFFERCLEAR_FUNC_INDEX, BUFFERGET_FUNC_INDEX, BUFFERMERGE_FUNC_INDEX, BUFFERSET_FUNC_INDEX,
     EXEC_FUNC_INDEX, LOADPRESTATEROOT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
-
-use log::debug;
 
 use wasmi::{
     Externals, ImportsBuilder, MemoryRef, Module, ModuleInstance, RuntimeArgs, RuntimeValue, Trap,
@@ -17,7 +20,7 @@ use wasmi::{
 pub type ExtResult = Result<Option<RuntimeValue>, Trap>;
 
 #[derive(Clone)]
-pub struct Runtime<'a> {
+pub struct RootRuntime<'a> {
     pub(crate) code: &'a [u8],
     pub(crate) data: &'a [u8],
     pub(crate) pre_root: [u8; 32],
@@ -26,9 +29,9 @@ pub struct Runtime<'a> {
     pub(crate) buffer: Buffer,
 }
 
-impl<'a> Runtime<'a> {
-    pub fn new(code: &'a [u8], data: &'a [u8], pre_root: [u8; 32]) -> Runtime<'a> {
-        Runtime {
+impl<'a> RootRuntime<'a> {
+    pub fn new(code: &'a [u8], data: &'a [u8], pre_root: [u8; 32]) -> RootRuntime<'a> {
+        RootRuntime {
             code,
             data,
             pre_root,
@@ -188,7 +191,7 @@ impl<'a> Runtime<'a> {
     }
 }
 
-impl<'a> Execute<'a> for Runtime<'a> {
+impl<'a> Execute<'a> for RootRuntime<'a> {
     fn execute(&'a mut self) -> [u8; 32] {
         let module = Module::from_buffer(self.code).expect("Module loading to succeed");
         let mut imports = ImportsBuilder::new();
@@ -215,7 +218,7 @@ impl<'a> Execute<'a> for Runtime<'a> {
     }
 }
 
-impl<'a> Externals for Runtime<'a> {
+impl<'a> Externals for RootRuntime<'a> {
     fn invoke_index(
         &mut self,
         index: usize,
@@ -254,8 +257,8 @@ mod test {
         pre_root: [u8; 32],
         memory: MemoryRef,
         buffer: Buffer,
-    ) -> Runtime<'a> {
-        Runtime {
+    ) -> RootRuntime<'a> {
+        RootRuntime {
             code: &[],
             data: data,
             pre_root,
