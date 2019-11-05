@@ -5,7 +5,7 @@ use crate::execute::Execute;
 use crate::resolver::{
     RuntimeModuleImportResolver, BLOCKDATACOPY_FUNC_INDEX, BLOCKDATASIZE_FUNC_INDEX,
     BUFFERCLEAR_FUNC_INDEX, BUFFERGET_FUNC_INDEX, BUFFERMERGE_FUNC_INDEX, BUFFERSET_FUNC_INDEX,
-    LOADPRESTATEROOT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
+    EXEC_FUNC_INDEX, LOADPRESTATEROOT_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
 
 use log::debug;
@@ -177,6 +177,15 @@ impl<'a> Runtime<'a> {
 
         Ok(None)
     }
+
+    fn ext_exec(&mut self, args: RuntimeArgs) -> ExtResult {
+        let code_ptr: u32 = args.nth(0);
+        let code_len: u32 = args.nth(1);
+
+        debug!("exec 0x{:x} ({} bytes)", code_ptr, code_len);
+
+        unimplemented!()
+    }
 }
 
 impl<'a> Execute<'a> for Runtime<'a> {
@@ -228,6 +237,7 @@ impl<'a> Externals for Runtime<'a> {
             BUFFERSET_FUNC_INDEX => self.ext_buffer_set(args),
             BUFFERMERGE_FUNC_INDEX => self.ext_buffer_merge(args),
             BUFFERCLEAR_FUNC_INDEX => self.ext_buffer_clear(args),
+            EXEC_FUNC_INDEX => self.ext_exec(args),
             _ => panic!("unknown function index"),
         }
     }
