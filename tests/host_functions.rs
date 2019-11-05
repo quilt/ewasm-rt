@@ -1,4 +1,4 @@
-use ewasm::{Execute, Runtime};
+use ewasm::{Execute, RootRuntime};
 use wabt::wat2wasm;
 
 fn nop() -> Vec<u8> {
@@ -65,7 +65,7 @@ fn exec() {
     ))
     .unwrap();
 
-    let mut runtime = Runtime::new(&code, &[], [0u8; 32]);
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     runtime.execute();
 }
 
@@ -78,7 +78,7 @@ fn save_post_root() {
         "#,
     );
 
-    let mut runtime = Runtime::new(&code, &[], [0u8; 32]);
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     let post_root = runtime.execute();
     assert_eq!(post_root, build_root(42));
 }
@@ -92,7 +92,7 @@ fn load_pre_root() {
         "#,
     );
 
-    let mut runtime = Runtime::new(&code, &[], build_root(42));
+    let mut runtime = RootRuntime::new(&code, &[], build_root(42));
     let post_root = runtime.execute();
     assert_eq!(post_root, build_root(42));
 }
@@ -107,7 +107,7 @@ fn block_data_size() {
         "#,
     );
 
-    let mut runtime = Runtime::new(&code, &[0u8; 42], build_root(42));
+    let mut runtime = RootRuntime::new(&code, &[0u8; 42], build_root(42));
     let post_root = runtime.execute();
     assert_eq!(post_root, build_root(42));
 }
@@ -122,7 +122,7 @@ fn block_data_copy() {
     );
 
     let block_data = build_root(42);
-    let mut runtime = Runtime::new(&code, &block_data, [0u8; 32]);
+    let mut runtime = RootRuntime::new(&code, &block_data, [0u8; 32]);
     let post_root = runtime.execute();
     assert_eq!(post_root, build_root(42));
 }
@@ -139,7 +139,7 @@ fn buffer_get_and_set() {
         "#,
     );
 
-    let mut runtime = Runtime::new(&code, &[], [0u8; 32]);
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     let post_root = runtime.execute();
     assert_eq!(post_root, build_root(42));
 }
@@ -188,7 +188,7 @@ fn buffer_merge() {
         "#,
     );
 
-    let mut runtime = Runtime::new(&code, &[], [0u8; 32]);
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     let post_root = runtime.execute();
 
     // The post root should be 1 + 3 + 4 = 8
@@ -226,7 +226,7 @@ fn buffer_clear() {
         "#,
     );
 
-    let mut runtime = Runtime::new(&code, &[], [0u8; 32]);
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     let post_root = runtime.execute();
 
     // The post root should be 2 - 0 = 2
