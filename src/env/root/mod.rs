@@ -3,6 +3,7 @@ mod resolver;
 use arrayref::array_ref;
 
 use crate::buffer::Buffer;
+use crate::env::child::ChildRuntime;
 use crate::execute::Execute;
 
 use log::debug;
@@ -187,7 +188,13 @@ impl<'a> RootRuntime<'a> {
 
         debug!("exec 0x{:x} ({} bytes)", code_ptr, code_len);
 
-        unimplemented!()
+        let memory = self.memory.as_ref().expect("root missing memory");
+        let code = memory.get(code_ptr, code_len as usize).unwrap();
+
+        let mut child = ChildRuntime::new(&code);
+        child.execute();
+
+        Ok(None)
     }
 }
 

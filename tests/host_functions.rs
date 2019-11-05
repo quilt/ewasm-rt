@@ -47,7 +47,6 @@ fn build_root(n: u8) -> [u8; 32] {
 }
 
 #[test]
-#[should_panic]
 fn exec() {
     let child_code = nop();
 
