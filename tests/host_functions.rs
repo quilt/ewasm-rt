@@ -1,6 +1,20 @@
 use ewasm::{Execute, Runtime};
 use wabt::wat2wasm;
 
+fn nop() -> Vec<u8> {
+    wat2wasm(r#"(module (func $main (export "main") (nop)))"#).unwrap()
+}
+
+fn escape(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 4);
+
+    for byte in bytes {
+        output.push_str(&format!(r#"\{:02x}"#, byte));
+    }
+
+    output
+}
+
 fn compile_wat(code: &str) -> Vec<u8> {
     wat2wasm(
         [
@@ -14,6 +28,7 @@ fn compile_wat(code: &str) -> Vec<u8> {
                     (import "env" "eth2_bufferSet" (func $buffer_set (param i32) (param i32) (param i32)))
                     (import "env" "eth2_bufferMerge" (func $buffer_merge (param i32) (param i32)))
                     (import "env" "eth2_bufferClear" (func $buffer_clear (param i32)))
+                    (import "env" "eth2_exec" (func $exec (param i32) (param i32)))
                     (memory (export "memory") 1)
                     (func $main (export "main")
             "#,
@@ -29,6 +44,29 @@ fn build_root(n: u8) -> [u8; 32] {
     let mut ret = [0u8; 32];
     ret[0] = n;
     ret
+}
+
+#[test]
+#[should_panic]
+fn exec() {
+    let child_code = nop();
+
+    let code = wat2wasm(format!(
+        r#"
+            (module
+                    (import "env" "eth2_exec" (func $exec (param i32) (param i32)))
+                    (memory (export "memory") 1)
+                    (data (i32.const 0) "{}")
+                    (func $main (export "main")
+                        (call $exec (i32.const 0) (i32.const {}))
+            ))"#,
+        escape(&child_code),
+        child_code.len(),
+    ))
+    .unwrap();
+
+    let mut runtime = Runtime::new(&code, &[], [0u8; 32]);
+    runtime.execute();
 }
 
 #[test]
