@@ -42,6 +42,13 @@ impl<'a> Execute<'a> for Runtime<'a> {
                 .expect("'memory' export should be a memory"),
         );
 
+        #[cfg(feature = "extra-pages")]
+        self.memory
+            .as_ref()
+            .unwrap()
+            .grow(wasmi::memory_units::Pages(100))
+            .expect("page count to increase by 100");
+
         instance
             .invoke_export("main", &[], self)
             .expect("Executed 'main'");
