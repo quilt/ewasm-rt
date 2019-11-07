@@ -3,7 +3,7 @@ use std::collections::HashMap;
 type K = u8;
 type V = HashMap<[u8; 32], [u8; 32]>;
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Buffer {
     map: HashMap<K, V>,
 }
