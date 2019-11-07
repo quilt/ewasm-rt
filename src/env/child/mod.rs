@@ -1,25 +1,26 @@
 mod resolver;
 
-use crate::execute::Execute;
+use crate::env::root::{RootRuntime, StackFrame};
 
-use self::resolver::ChildModuleImportResolver;
+use self::resolver::{externals, ChildModuleImportResolver};
+
+use super::ExtResult;
 
 use wasmi::{
-    Externals, ImportsBuilder, MemoryRef, Module, ModuleInstance, RuntimeArgs, RuntimeValue, Trap,
+    Externals, ImportsBuilder, MemoryRef, Module, ModuleInstance, ModuleRef, RuntimeArgs,
+    RuntimeValue, Trap,
 };
 
 #[derive(Debug)]
 pub struct ChildRuntime<'a> {
-    code: &'a [u8],
+    instance: ModuleRef,
+    root: &'a RootRuntime<'a>,
 }
 
 impl<'a> ChildRuntime<'a> {
-    pub fn new(code: &'a [u8]) -> Self {
-        Self { code }
-    }
+    pub fn new(root: &'a RootRuntime<'a>, code: &'a [u8]) -> Self {
+        let module = Module::from_buffer(code).expect("Module loading to succeed");
 
-    pub fn execute(&mut self) {
-        let module = Module::from_buffer(self.code).expect("Module loading to succeed");
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &ChildModuleImportResolver);
 
@@ -27,9 +28,50 @@ impl<'a> ChildRuntime<'a> {
             .expect("Module instantation expected to succeed")
             .assert_no_start();
 
-        instance
+        Self { instance, root }
+    }
+
+    pub fn execute(&mut self) {
+        self.instance
+            .clone()
             .invoke_export("main", &[], self)
             .expect("Executed 'main'");
+    }
+
+    fn memory(&self) -> MemoryRef {
+        self.instance
+            .export_by_name("memory")
+            .expect("Module expected to have 'memory' export")
+            .as_memory()
+            .cloned()
+            .expect("'memory' export should be a memory")
+    }
+
+    fn ext_call(&self, args: RuntimeArgs) -> ExtResult {
+        let memory = self.memory();
+
+        let name_ptr: u32 = args.nth(0);
+        let name_len: u32 = args.nth(1);
+        let name_bytes = memory.get(name_ptr, name_len as usize).unwrap();
+        let name = String::from_utf8(name_bytes).unwrap();
+
+        let arg_ptr: u32 = args.nth(2);
+        let arg_len: u32 = args.nth(3);
+
+        let ret_ptr: u32 = args.nth(4);
+        let ret_len: u32 = args.nth(5);
+
+        let frame = StackFrame::builder()
+            .argument_offset(arg_ptr)
+            .argument_length(arg_len)
+            .return_offset(ret_ptr)
+            .return_length(ret_len)
+            .memory(memory)
+            .build();
+
+        let retcode = self.root.call(&name, frame);
+
+        Ok(Some(retcode.into()))
     }
 }
 
@@ -40,6 +82,7 @@ impl<'a> Externals for ChildRuntime<'a> {
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
         match index {
+            externals::CALL => self.ext_call(args),
             _ => panic!("unknown function index"),
         }
     }
