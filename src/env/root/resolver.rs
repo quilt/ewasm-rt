@@ -10,10 +10,11 @@ pub const BUFFERGET_FUNC_INDEX: usize = 4;
 pub const BUFFERSET_FUNC_INDEX: usize = 5;
 pub const BUFFERMERGE_FUNC_INDEX: usize = 6;
 pub const BUFFERCLEAR_FUNC_INDEX: usize = 7;
-pub const EXEC_FUNC_INDEX: usize = 8;
+pub const LOADMODULE_FUNC_INDEX: usize = 8;
 pub const EXPOSE_FUNC_INDEX: usize = 9;
 pub const ARGUMENT_FUNC_INDEX: usize = 10;
 pub const RETURN_FUNC_INDEX: usize = 11;
+pub const CALLMODULE_FUNC_INDEX: usize = 12;
 
 pub struct RuntimeModuleImportResolver;
 
@@ -59,9 +60,13 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32][..], None),
                 BUFFERCLEAR_FUNC_INDEX,
             ),
-            "eth2_exec" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], None),
-                EXEC_FUNC_INDEX,
+            "eth2_loadModule" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 3][..], None),
+                LOADMODULE_FUNC_INDEX,
+            ),
+            "eth2_callModule" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 7][..], Some(ValueType::I32)),
+                CALLMODULE_FUNC_INDEX,
             ),
             "eth2_expose" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32, ValueType::I32][..], None),

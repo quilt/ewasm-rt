@@ -1,3 +1,3 @@
-pub trait Execute<'a> {
-    fn execute(&'a mut self) -> [u8; 32];
+pub trait Execute {
+    fn execute(&mut self) -> [u8; 32];
 }

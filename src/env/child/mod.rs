@@ -1,20 +1,24 @@
 mod resolver;
 
-use crate::env::root::{RootRuntime, RootRuntimeWeak, StackFrame};
+use crate::env::root::{RootRuntime, RootRuntimeWeak};
 
 use self::resolver::{externals, ChildModuleImportResolver};
 
-use super::ExtResult;
+use std::cell::RefCell;
+
+use super::{ExtResult, StackFrame};
 
 use wasmi::{
-    Externals, ImportsBuilder, MemoryRef, Module, ModuleInstance, ModuleRef, RuntimeArgs,
-    RuntimeValue, Trap,
+    Externals, FuncInstance, ImportsBuilder, MemoryRef, Module, ModuleInstance, ModuleRef,
+    RuntimeArgs, RuntimeValue, Trap,
 };
 
 #[derive(Debug)]
 pub struct ChildRuntime<'a> {
     instance: ModuleRef,
     root: RootRuntimeWeak<'a>,
+
+    call_stack: RefCell<Vec<StackFrame>>,
 }
 
 impl<'a> ChildRuntime<'a> {
@@ -28,14 +32,33 @@ impl<'a> ChildRuntime<'a> {
             .expect("Module instantation expected to succeed")
             .assert_no_start();
 
-        Self { instance, root }
+        Self {
+            instance,
+            root,
+            call_stack: Default::default(),
+        }
     }
 
-    pub fn execute(&mut self) {
-        self.instance
-            .clone()
-            .invoke_export("main", &[], self)
-            .expect("Executed 'main'");
+    pub(super) fn call(&self, name: &str, frame: StackFrame) -> i32 {
+        let export = self
+            .instance
+            .export_by_name(name)
+            .expect("name doesn't exist in child");
+
+        let func = export.as_func().expect("name isn't a function");
+
+        self.call_stack.borrow_mut().push(frame);
+
+        let mut externals = ChildExternals(self);
+        let result = FuncInstance::invoke(&func, &[], &mut externals)
+            .expect("function provided by child runtime failed")
+            .expect("function provided by child runtime did not return a value")
+            .try_into()
+            .expect("funtion provided by child runtime return a non-i32 value");
+
+        self.call_stack.borrow_mut().pop().unwrap();
+
+        result
     }
 
     fn memory(&self) -> MemoryRef {
@@ -81,14 +104,17 @@ impl<'a> ChildRuntime<'a> {
     }
 }
 
-impl<'a> Externals for ChildRuntime<'a> {
+#[derive(Debug)]
+struct ChildExternals<'a, 'b>(&'a ChildRuntime<'b>);
+
+impl<'a, 'b> Externals for ChildExternals<'a, 'b> {
     fn invoke_index(
         &mut self,
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
         match index {
-            externals::CALL => self.ext_call(args),
+            externals::CALL => self.0.ext_call(args),
             _ => panic!("unknown function index"),
         }
     }
