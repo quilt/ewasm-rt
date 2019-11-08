@@ -17,6 +17,7 @@ use self::resolver::{
 
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::{Rc, Weak};
 
 use super::ExtResult;
 
@@ -39,20 +40,19 @@ pub(crate) struct StackFrame {
 }
 
 #[derive(Debug, Clone)]
-pub struct RootRuntime<'a> {
-    code: &'a [u8],
-    data: &'a [u8],
-    pre_root: [u8; 32],
-    post_root: RefCell<[u8; 32]>,
-    instance: ModuleRef,
-    buffer: RefCell<Buffer>,
+pub(crate) struct RootRuntimeWeak<'a>(Weak<Inner<'a>>);
 
-    call_targets: RefCell<HashSet<String>>,
-    call_stack: RefCell<Vec<StackFrame>>,
+impl<'a> RootRuntimeWeak<'a> {
+    pub fn upgrade(&self) -> Option<RootRuntime<'a>> {
+        self.0.upgrade().map(RootRuntime)
+    }
 }
 
+#[derive(Debug, Clone)]
+pub struct RootRuntime<'a>(Rc<Inner<'a>>);
+
 impl<'a> RootRuntime<'a> {
-    pub fn new(code: &'a [u8], data: &'a [u8], pre_root: [u8; 32]) -> RootRuntime<'a> {
+    pub fn new<'b>(code: &'b [u8], data: &'a [u8], pre_root: [u8; 32]) -> RootRuntime<'a> {
         let module = Module::from_buffer(code).expect("Module loading to succeed");
 
         let mut imports = ImportsBuilder::new();
@@ -62,24 +62,24 @@ impl<'a> RootRuntime<'a> {
             .expect("Module instantation expected to succeed")
             .assert_no_start();
 
-        RootRuntime {
+        RootRuntime(Rc::new(Inner {
             instance,
-            code,
             data,
             pre_root,
             post_root: Default::default(),
             call_targets: Default::default(),
             call_stack: Default::default(),
             buffer: Default::default(),
-        }
+        }))
     }
 
     pub(crate) fn call(&self, name: &str, frame: StackFrame) -> i32 {
-        if !self.call_targets.borrow().contains(name) {
+        if !self.0.call_targets.borrow().contains(name) {
             panic!("function `{}` is not a safe call target", name);
         }
 
         let export = self
+            .0
             .instance
             .export_by_name(name)
             .expect("Exposed name doesn't exist");
@@ -88,7 +88,7 @@ impl<'a> RootRuntime<'a> {
 
         let args: &[RuntimeValue] = &[frame.argument_length.into(), frame.return_length.into()];
 
-        self.call_stack.borrow_mut().push(frame);
+        self.0.call_stack.borrow_mut().push(frame);
 
         let result = FuncInstance::invoke(&func, args, &mut self.externals())
             .expect("function provided by root runtime failed")
@@ -96,7 +96,7 @@ impl<'a> RootRuntime<'a> {
             .try_into()
             .expect("funtion provided by rooot runtime return a non-i32 value");
 
-        self.call_stack.borrow_mut().pop().unwrap();
+        self.0.call_stack.borrow_mut().pop().unwrap();
 
         result
     }
@@ -106,12 +106,17 @@ impl<'a> RootRuntime<'a> {
     }
 
     fn memory(&self) -> MemoryRef {
-        self.instance
+        self.0
+            .instance
             .export_by_name("memory")
             .expect("Module expected to have 'memory' export")
             .as_memory()
             .cloned()
             .expect("'memory' export should be a memory")
+    }
+
+    pub(crate) fn downgrade(&self) -> RootRuntimeWeak<'a> {
+        RootRuntimeWeak(Rc::downgrade(&self.0))
     }
 
     /// Copies data from the given offset and length into the buffer allocated
@@ -128,7 +133,7 @@ impl<'a> RootRuntime<'a> {
         let src_ptr: u32 = args.nth(0);
         let src_len: u32 = args.nth(1);
 
-        let call_stack = self.call_stack.borrow();
+        let call_stack = self.0.call_stack.borrow();
         let top = call_stack
             .last()
             .expect("eth2_return requires a call stack");
@@ -161,7 +166,7 @@ impl<'a> RootRuntime<'a> {
         let dest_ptr: u32 = args.nth(0);
         let dest_len: u32 = args.nth(1);
 
-        let call_stack = self.call_stack.borrow();
+        let call_stack = self.0.call_stack.borrow();
         let top = call_stack
             .last()
             .expect("eth2_argument requires a call stack");
@@ -188,7 +193,7 @@ impl<'a> RootRuntime<'a> {
         let name_bytes = memory.get(name_ptr, name_len as usize).unwrap();
         let name = String::from_utf8(name_bytes).unwrap();
 
-        self.call_targets.borrow_mut().insert(name);
+        self.0.call_targets.borrow_mut().insert(name);
 
         Ok(None)
     }
@@ -201,7 +206,7 @@ impl<'a> RootRuntime<'a> {
         // TODO: add checks for out of bounds access
         let memory = self.memory();
         memory
-            .set(ptr, &self.pre_root[..])
+            .set(ptr, &self.0.pre_root[..])
             .expect("expects writing to memory to succeed");
 
         Ok(None)
@@ -212,7 +217,7 @@ impl<'a> RootRuntime<'a> {
         debug!("savepoststateroot from {}", ptr);
 
         // TODO: add checks for out of bounds access
-        let mut post_root = self.post_root.borrow_mut();
+        let mut post_root = self.0.post_root.borrow_mut();
         let memory = self.memory();
         memory
             .get_into(ptr, &mut post_root[..])
@@ -222,7 +227,7 @@ impl<'a> RootRuntime<'a> {
     }
 
     fn ext_block_data_size(&self, _: RuntimeArgs) -> ExtResult {
-        let ret: i32 = self.data.len() as i32;
+        let ret: i32 = self.0.data.len() as i32;
         debug!("blockdatasize {}", ret);
         Ok(Some(ret.into()))
     }
@@ -243,7 +248,7 @@ impl<'a> RootRuntime<'a> {
         // TODO: add checks for out of bounds access
         let memory = self.memory();
         memory
-            .set(ptr, &self.data[offset..length])
+            .set(ptr, &self.0.data[offset..length])
             .expect("expects writing to memory to succeed");
 
         Ok(None)
@@ -268,7 +273,7 @@ impl<'a> RootRuntime<'a> {
         let key = memory.get(key_ptr, 32).expect("read to suceed");
         let key = *array_ref![key, 0, 32];
 
-        if let Some(value) = self.buffer.borrow().get(frame, key) {
+        if let Some(value) = self.0.buffer.borrow().get(frame, key) {
             memory
                 .set(value_ptr, value)
                 .expect("writing to memory to succeed");
@@ -301,7 +306,7 @@ impl<'a> RootRuntime<'a> {
         let value = memory.get(value_ptr, 32).expect("read to suceed");
         let value = *array_ref![value, 0, 32];
 
-        self.buffer.borrow_mut().insert(frame, key, value);
+        self.0.buffer.borrow_mut().insert(frame, key, value);
 
         Ok(None)
     }
@@ -316,7 +321,7 @@ impl<'a> RootRuntime<'a> {
         let frame_a = frame_a as u8;
         let frame_b = frame_b as u8;
 
-        self.buffer.borrow_mut().merge(frame_a, frame_b);
+        self.0.buffer.borrow_mut().merge(frame_a, frame_b);
 
         Ok(None)
     }
@@ -329,7 +334,7 @@ impl<'a> RootRuntime<'a> {
 
         debug!("bufferclear on frame {}", frame);
 
-        self.buffer.borrow_mut().clear(frame);
+        self.0.buffer.borrow_mut().clear(frame);
 
         Ok(None)
     }
@@ -343,20 +348,33 @@ impl<'a> RootRuntime<'a> {
         let memory = self.memory();
         let code = memory.get(code_ptr, code_len as usize).unwrap();
 
-        let mut child = ChildRuntime::new(self, &code);
+        let mut child = ChildRuntime::new(self.downgrade(), &code);
         child.execute();
 
         Ok(None)
     }
 }
 
+#[derive(Debug)]
+struct Inner<'a> {
+    data: &'a [u8],
+    pre_root: [u8; 32],
+    post_root: RefCell<[u8; 32]>,
+    instance: ModuleRef,
+    buffer: RefCell<Buffer>,
+
+    call_targets: RefCell<HashSet<String>>,
+    call_stack: RefCell<Vec<StackFrame>>,
+}
+
 impl<'a> Execute<'a> for RootRuntime<'a> {
     fn execute(&'a mut self) -> [u8; 32] {
-        self.instance
+        self.0
+            .instance
             .invoke_export("main", &[], &mut self.externals())
             .expect("Executed 'main'");
 
-        *self.post_root.borrow()
+        *self.0.post_root.borrow()
     }
 }
 
@@ -415,7 +433,7 @@ mod test {
 
     fn build_runtime<'a>(data: &'a [u8], pre_root: [u8; 32], buffer: Buffer) -> RootRuntime<'a> {
         let mut rt = RootRuntime::new(&NOP, data, pre_root);
-        rt.buffer = buffer.into();
+        Rc::get_mut(&mut rt.0).unwrap().buffer = buffer.into();
         rt
     }
 
@@ -434,7 +452,7 @@ mod test {
             .memory(memory.clone())
             .build();
 
-        runtime.call_stack.borrow_mut().push(frame);
+        runtime.0.call_stack.borrow_mut().push(frame);
 
         let result: u32 = Externals::invoke_index(
             &mut runtime.externals(),
@@ -465,7 +483,7 @@ mod test {
             .memory(memory.clone())
             .build();
 
-        runtime.call_stack.borrow_mut().push(frame);
+        runtime.0.call_stack.borrow_mut().push(frame);
 
         let result: u32 = Externals::invoke_index(
             &mut runtime.externals(),
@@ -494,7 +512,7 @@ mod test {
             .memory(memory.clone())
             .build();
 
-        runtime.call_stack.borrow_mut().push(frame);
+        runtime.0.call_stack.borrow_mut().push(frame);
 
         let result: u32 = Externals::invoke_index(
             &mut runtime.externals(),
@@ -522,7 +540,7 @@ mod test {
             .memory(memory.clone())
             .build();
 
-        runtime.call_stack.borrow_mut().push(frame);
+        runtime.0.call_stack.borrow_mut().push(frame);
 
         let result: u32 = Externals::invoke_index(
             &mut runtime.externals(),
@@ -553,7 +571,7 @@ mod test {
             .memory(memory.clone())
             .build();
 
-        runtime.call_stack.borrow_mut().push(frame);
+        runtime.0.call_stack.borrow_mut().push(frame);
 
         let result: u32 = Externals::invoke_index(
             &mut runtime.externals(),
@@ -585,7 +603,7 @@ mod test {
             .memory(memory.clone())
             .build();
 
-        runtime.call_stack.borrow_mut().push(frame);
+        runtime.0.call_stack.borrow_mut().push(frame);
 
         let result: u32 = Externals::invoke_index(
             &mut runtime.externals(),
@@ -716,7 +734,7 @@ mod test {
         )
         .unwrap();
 
-        let buffer = runtime.buffer.borrow();
+        let buffer = runtime.0.buffer.borrow();
         assert_eq!(buffer.get(0, [1u8; 32]), Some(&[2u8; 32]));
     }
 
@@ -738,7 +756,7 @@ mod test {
         )
         .unwrap();
 
-        let buffer = runtime.buffer.borrow();
+        let buffer = runtime.0.buffer.borrow();
         assert_eq!(buffer.get(1, [0u8; 32]), Some(&[3u8; 32]));
         assert_eq!(buffer.get(1, [1u8; 32]), Some(&[1u8; 32]));
         assert_eq!(buffer.get(1, [2u8; 32]), Some(&[2u8; 32]));
@@ -762,7 +780,7 @@ mod test {
         )
         .unwrap();
 
-        let buffer = runtime.buffer.borrow();
+        let buffer = runtime.0.buffer.borrow();
         assert_eq!(buffer.get(1, [0u8; 32]), Some(&[0u8; 32]));
         assert_eq!(buffer.get(2, [0u8; 32]), None);
     }

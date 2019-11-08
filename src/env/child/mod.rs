@@ -1,6 +1,6 @@
 mod resolver;
 
-use crate::env::root::{RootRuntime, StackFrame};
+use crate::env::root::{RootRuntime, RootRuntimeWeak, StackFrame};
 
 use self::resolver::{externals, ChildModuleImportResolver};
 
@@ -14,11 +14,11 @@ use wasmi::{
 #[derive(Debug)]
 pub struct ChildRuntime<'a> {
     instance: ModuleRef,
-    root: &'a RootRuntime<'a>,
+    root: RootRuntimeWeak<'a>,
 }
 
 impl<'a> ChildRuntime<'a> {
-    pub fn new(root: &'a RootRuntime<'a>, code: &'a [u8]) -> Self {
+    pub(crate) fn new(root: RootRuntimeWeak<'a>, code: &[u8]) -> Self {
         let module = Module::from_buffer(code).expect("Module loading to succeed");
 
         let mut imports = ImportsBuilder::new();
@@ -47,6 +47,12 @@ impl<'a> ChildRuntime<'a> {
             .expect("'memory' export should be a memory")
     }
 
+    fn root(&self) -> RootRuntime<'a> {
+        self.root
+            .upgrade()
+            .expect("root runtime dropped before child")
+    }
+
     fn ext_call(&self, args: RuntimeArgs) -> ExtResult {
         let memory = self.memory();
 
@@ -69,7 +75,7 @@ impl<'a> ChildRuntime<'a> {
             .memory(memory)
             .build();
 
-        let retcode = self.root.call(&name, frame);
+        let retcode = self.root().call(&name, frame);
 
         Ok(Some(retcode.into()))
     }
