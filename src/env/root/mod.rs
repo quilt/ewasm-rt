@@ -11,33 +11,21 @@ use log::debug;
 use self::resolver::{
     RuntimeModuleImportResolver, ARGUMENT_FUNC_INDEX, BLOCKDATACOPY_FUNC_INDEX,
     BLOCKDATASIZE_FUNC_INDEX, BUFFERCLEAR_FUNC_INDEX, BUFFERGET_FUNC_INDEX, BUFFERMERGE_FUNC_INDEX,
-    BUFFERSET_FUNC_INDEX, EXEC_FUNC_INDEX, EXPOSE_FUNC_INDEX, LOADPRESTATEROOT_FUNC_INDEX,
-    RETURN_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
+    BUFFERSET_FUNC_INDEX, CALLMODULE_FUNC_INDEX, EXPOSE_FUNC_INDEX, LOADMODULE_FUNC_INDEX,
+    LOADPRESTATEROOT_FUNC_INDEX, RETURN_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
-use super::ExtResult;
-
-use typed_builder::TypedBuilder;
+use super::{ExtResult, StackFrame};
 
 use wasmi::{
     Externals, FuncInstance, ImportsBuilder, MemoryInstance, MemoryRef, Module, ModuleInstance,
     ModuleRef, RuntimeArgs, RuntimeValue, Trap,
 };
-
-#[derive(Debug, Clone, TypedBuilder)]
-pub(crate) struct StackFrame {
-    memory: MemoryRef,
-
-    argument_offset: u32,
-    argument_length: u32,
-
-    return_offset: u32,
-    return_length: u32,
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RootRuntimeWeak<'a>(Weak<Inner<'a>>);
@@ -66,6 +54,7 @@ impl<'a> RootRuntime<'a> {
             instance,
             data,
             pre_root,
+            children: Default::default(),
             post_root: Default::default(),
             call_targets: Default::default(),
             call_stack: Default::default(),
@@ -73,7 +62,7 @@ impl<'a> RootRuntime<'a> {
         }))
     }
 
-    pub(crate) fn call(&self, name: &str, frame: StackFrame) -> i32 {
+    pub(super) fn call(&self, name: &str, frame: StackFrame) -> i32 {
         if !self.0.call_targets.borrow().contains(name) {
             panic!("function `{}` is not a safe call target", name);
         }
@@ -86,11 +75,11 @@ impl<'a> RootRuntime<'a> {
 
         let func = export.as_func().expect("Exposed name isn't a function");
 
-        let args: &[RuntimeValue] = &[frame.argument_length.into(), frame.return_length.into()];
-
         self.0.call_stack.borrow_mut().push(frame);
 
-        let result = FuncInstance::invoke(&func, args, &mut self.externals())
+        let mut externals = RootExternals(self);
+
+        let result = FuncInstance::invoke(&func, &[], &mut externals)
             .expect("function provided by root runtime failed")
             .expect("function provided by root runtime did not return a value")
             .try_into()
@@ -99,10 +88,6 @@ impl<'a> RootRuntime<'a> {
         self.0.call_stack.borrow_mut().pop().unwrap();
 
         result
-    }
-
-    fn externals(&self) -> RootExternals {
-        RootExternals(self)
     }
 
     fn memory(&self) -> MemoryRef {
@@ -339,19 +324,85 @@ impl<'a> RootRuntime<'a> {
         Ok(None)
     }
 
-    fn ext_exec(&self, args: RuntimeArgs) -> ExtResult {
-        let code_ptr: u32 = args.nth(0);
-        let code_len: u32 = args.nth(1);
+    /// Loads a compiled Wasm module from memory into the slot specified.
+    ///
+    /// # Signature
+    ///
+    /// ```text
+    /// eth2_loadModule(slot: u32, code_offset: u32, code_length: u32) -> ()
+    /// ```
+    fn ext_load_module(&self, args: RuntimeArgs) -> ExtResult {
+        let slot: u32 = args.nth(0);
+        let code_ptr: u32 = args.nth(1);
+        let code_len: u32 = args.nth(2);
 
-        debug!("exec 0x{:x} ({} bytes)", code_ptr, code_len);
+        debug!(
+            "load module 0x{:x} ({} bytes) into {}",
+            code_ptr, code_len, slot
+        );
+
+        let mut children = self.0.children.borrow_mut();
+
+        let entry = match children.entry(slot) {
+            Entry::Occupied(_) => panic!("reusing module slot identifiers not supported"),
+            Entry::Vacant(x) => x,
+        };
 
         let memory = self.memory();
         let code = memory.get(code_ptr, code_len as usize).unwrap();
 
-        let mut child = ChildRuntime::new(self.downgrade(), &code);
-        child.execute();
+        let child = ChildRuntime::new(self.downgrade(), &code);
+        entry.insert(child);
 
         Ok(None)
+    }
+
+    /// Calls the function `name` from the module in `slot`.
+    ///
+    /// # Signature
+    ///
+    /// ```text
+    /// eth2_callModule(
+    ///     slot: u32,
+    ///     name_offset: u32,
+    ///     name_length: u32
+    ///     argument_offset: u32,
+    ///     argument_length: u32,
+    ///     return_offset: u32,
+    ///     return_length: u32,
+    /// ) -> u32
+    /// ```
+    fn ext_call_module(&self, args: RuntimeArgs) -> ExtResult {
+        let memory = self.memory();
+
+        let slot: u32 = args.nth(0);
+
+        let name_ptr: u32 = args.nth(1);
+        let name_len: u32 = args.nth(2);
+        let name_bytes = memory.get(name_ptr, name_len as usize).unwrap();
+        let name = String::from_utf8(name_bytes).unwrap();
+
+        let arg_ptr: u32 = args.nth(3);
+        let arg_len: u32 = args.nth(4);
+
+        let ret_ptr: u32 = args.nth(5);
+        let ret_len: u32 = args.nth(6);
+
+        let frame = StackFrame::builder()
+            .argument_offset(arg_ptr)
+            .argument_length(arg_len)
+            .return_offset(ret_ptr)
+            .return_length(ret_len)
+            .memory(memory)
+            .build();
+
+        // TODO: There's probably a bug here. It might be impossible to load a
+        // new module depending on the callstack.
+
+        let children = self.0.children.borrow();
+        let retcode = children[&slot].call(&name, frame);
+
+        Ok(Some(retcode.into()))
     }
 }
 
@@ -363,15 +414,19 @@ struct Inner<'a> {
     instance: ModuleRef,
     buffer: RefCell<Buffer>,
 
+    children: RefCell<HashMap<u32, ChildRuntime<'a>>>,
+
     call_targets: RefCell<HashSet<String>>,
     call_stack: RefCell<Vec<StackFrame>>,
 }
 
-impl<'a> Execute<'a> for RootRuntime<'a> {
-    fn execute(&'a mut self) -> [u8; 32] {
+impl<'a> Execute for RootRuntime<'a> {
+    fn execute(&mut self) -> [u8; 32] {
+        let mut externals = RootExternals(self);
+
         self.0
             .instance
-            .invoke_export("main", &[], &mut self.externals())
+            .invoke_export("main", &[], &mut externals)
             .expect("Executed 'main'");
 
         *self.0.post_root.borrow()
@@ -396,7 +451,8 @@ impl<'a, 'b> Externals for RootExternals<'a, 'b> {
             BUFFERSET_FUNC_INDEX => self.0.ext_buffer_set(args),
             BUFFERMERGE_FUNC_INDEX => self.0.ext_buffer_merge(args),
             BUFFERCLEAR_FUNC_INDEX => self.0.ext_buffer_clear(args),
-            EXEC_FUNC_INDEX => self.0.ext_exec(args),
+            LOADMODULE_FUNC_INDEX => self.0.ext_load_module(args),
+            CALLMODULE_FUNC_INDEX => self.0.ext_call_module(args),
             EXPOSE_FUNC_INDEX => self.0.ext_expose(args),
             ARGUMENT_FUNC_INDEX => self.0.ext_argument(args),
             RETURN_FUNC_INDEX => self.0.ext_return(args),
@@ -454,8 +510,9 @@ mod test {
 
         runtime.0.call_stack.borrow_mut().push(frame);
 
+        let mut externals = RootExternals(&runtime);
         let result: u32 = Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             RETURN_FUNC_INDEX,
             [0.into(), 3.into()][..].into(),
         )
@@ -485,8 +542,9 @@ mod test {
 
         runtime.0.call_stack.borrow_mut().push(frame);
 
+        let mut externals = RootExternals(&runtime);
         let result: u32 = Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             RETURN_FUNC_INDEX,
             [0.into(), 1.into()][..].into(),
         )
@@ -514,8 +572,9 @@ mod test {
 
         runtime.0.call_stack.borrow_mut().push(frame);
 
+        let mut externals = RootExternals(&runtime);
         let result: u32 = Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             RETURN_FUNC_INDEX,
             [0.into(), 0.into()][..].into(),
         )
@@ -542,8 +601,9 @@ mod test {
 
         runtime.0.call_stack.borrow_mut().push(frame);
 
+        let mut externals = RootExternals(&runtime);
         let result: u32 = Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             ARGUMENT_FUNC_INDEX,
             [0.into(), 0.into()][..].into(),
         )
@@ -573,8 +633,9 @@ mod test {
 
         runtime.0.call_stack.borrow_mut().push(frame);
 
+        let mut externals = RootExternals(&runtime);
         let result: u32 = Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             ARGUMENT_FUNC_INDEX,
             [0.into(), 1.into()][..].into(),
         )
@@ -605,8 +666,9 @@ mod test {
 
         runtime.0.call_stack.borrow_mut().push(frame);
 
+        let mut externals = RootExternals(&runtime);
         let result: u32 = Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             ARGUMENT_FUNC_INDEX,
             [0.into(), 3.into()][..].into(),
         )
@@ -623,8 +685,9 @@ mod test {
     fn load_pre_state_root() {
         let runtime = build_runtime(&[], build_root(42), Buffer::default());
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             LOADPRESTATEROOT_FUNC_INDEX,
             [0.into()][..].into(),
         )
@@ -640,8 +703,9 @@ mod test {
         let memory = runtime.memory();
         memory.set(100, &build_root(42)).expect("sets memory");
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             SAVEPOSTSTATEROOT_FUNC_INDEX,
             [100.into()][..].into(),
         )
@@ -654,14 +718,11 @@ mod test {
     fn block_data_size() {
         let runtime = build_runtime(&[1; 42], build_root(0), Buffer::default());
 
+        let mut externals = RootExternals(&runtime);
         assert_eq!(
-            Externals::invoke_index(
-                &mut runtime.externals(),
-                BLOCKDATASIZE_FUNC_INDEX,
-                [][..].into()
-            )
-            .unwrap()
-            .unwrap(),
+            Externals::invoke_index(&mut externals, BLOCKDATASIZE_FUNC_INDEX, [][..].into())
+                .unwrap()
+                .unwrap(),
             42.into()
         );
     }
@@ -671,15 +732,17 @@ mod test {
         let data: Vec<u8> = (1..21).collect();
         let runtime = build_runtime(&data, build_root(0), Buffer::default());
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             BLOCKDATACOPY_FUNC_INDEX,
             [1.into(), 0.into(), 20.into()][..].into(),
         )
         .unwrap();
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             BLOCKDATACOPY_FUNC_INDEX,
             [23.into(), 10.into(), 20.into()][..].into(),
         )
@@ -706,8 +769,9 @@ mod test {
         // Save the 32 byte key at position 0 in memory
         memory.set(0, &[1u8; 32]).unwrap();
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             BUFFERGET_FUNC_INDEX,
             [0.into(), 0.into(), 32.into()][..].into(),
         )
@@ -727,8 +791,9 @@ mod test {
         memory.set(0, &[1u8; 32]).unwrap();
         memory.set(32, &[2u8; 32]).unwrap();
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             BUFFERSET_FUNC_INDEX,
             [0.into(), 0.into(), 32.into()][..].into(),
         )
@@ -749,8 +814,9 @@ mod test {
 
         let runtime = build_runtime(&[], build_root(0), buffer);
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             BUFFERMERGE_FUNC_INDEX,
             [1.into(), 2.into()][..].into(),
         )
@@ -773,8 +839,9 @@ mod test {
 
         let runtime = build_runtime(&[], build_root(0), buffer);
 
+        let mut externals = RootExternals(&runtime);
         Externals::invoke_index(
-            &mut runtime.externals(),
+            &mut externals,
             BUFFERCLEAR_FUNC_INDEX,
             [2.into()][..].into(),
         )

@@ -13,17 +13,16 @@ fn compile_wat(code: &str) -> Vec<u8> {
         [
             r#"
             (module
-                    (import "env" "eth2_savePostStateRoot" (func $save_post_root (param i32)))
-                    (import "env" "eth2_loadPreStateRoot" (func $load_pre_root (param i32)))
-                    (import "env" "eth2_blockDataSize" (func $block_data_size (result i32)))
-                    (import "env" "eth2_blockDataCopy" (func $block_data_copy (param i32) (param i32) (param i32)))
-                    (import "env" "eth2_bufferGet" (func $buffer_get (param i32) (param i32) (param i32) (result i32)))
-                    (import "env" "eth2_bufferSet" (func $buffer_set (param i32) (param i32) (param i32)))
-                    (import "env" "eth2_bufferMerge" (func $buffer_merge (param i32) (param i32)))
-                    (import "env" "eth2_bufferClear" (func $buffer_clear (param i32)))
-                    (import "env" "eth2_exec" (func $exec (param i32) (param i32)))
-                    (memory (export "memory") 1)
-                    (func $main (export "main")
+                (import "env" "eth2_savePostStateRoot" (func $save_post_root (param i32)))
+                (import "env" "eth2_loadPreStateRoot" (func $load_pre_root (param i32)))
+                (import "env" "eth2_blockDataSize" (func $block_data_size (result i32)))
+                (import "env" "eth2_blockDataCopy" (func $block_data_copy (param i32) (param i32) (param i32)))
+                (import "env" "eth2_bufferGet" (func $buffer_get (param i32) (param i32) (param i32) (result i32)))
+                (import "env" "eth2_bufferSet" (func $buffer_set (param i32) (param i32) (param i32)))
+                (import "env" "eth2_bufferMerge" (func $buffer_merge (param i32) (param i32)))
+                (import "env" "eth2_bufferClear" (func $buffer_clear (param i32)))
+                (memory (export "memory") 1)
+                (func $main (export "main")
             "#,
             code,
             r#"))"#,
@@ -40,18 +39,32 @@ fn build_root(n: u8) -> [u8; 32] {
 }
 
 #[test]
-fn exec() {
+fn module_load_and_call() {
     let child_code = nop();
 
     let code = wat2wasm(format!(
         r#"
-            (module
-                    (import "env" "eth2_exec" (func $exec (param i32) (param i32)))
-                    (memory (export "memory") 1)
-                    (data (i32.const 0) "{}")
-                    (func $main (export "main")
-                        (call $exec (i32.const 0) (i32.const {}))
-            ))"#,
+        (module
+            (import "env" "eth2_loadModule" (func $load (param i32) (param i32) (param i32)))
+            (import
+                "env"
+                "eth2_callModule"
+                (func
+                    $call
+                    (param i32)
+                    (param i32)
+                    (param i32)
+                    (param i32)
+                    (param i32)
+                    (param i32)
+                    (param i32)
+                    (result i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "{}")
+            (func $main (export "main")
+                (; Load a compiled module into slot 0 ;)
+                (call $load (i32.const 0) (i32.const 0) (i32.const {}))))
+        "#,
         escape(&child_code),
         child_code.len(),
     ))
