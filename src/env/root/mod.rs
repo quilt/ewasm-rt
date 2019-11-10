@@ -23,8 +23,8 @@ use std::rc::{Rc, Weak};
 use super::{ExtResult, StackFrame};
 
 use wasmi::{
-    Externals, FuncInstance, ImportsBuilder, MemoryInstance, MemoryRef, Module, ModuleInstance,
-    ModuleRef, RuntimeArgs, RuntimeValue, Trap,
+    Externals, FuncInstance, ImportsBuilder, MemoryRef, Module, ModuleInstance, ModuleRef,
+    RuntimeArgs, RuntimeValue, Trap,
 };
 
 #[derive(Debug, Clone)]
@@ -123,18 +123,9 @@ impl<'a> RootRuntime<'a> {
             .last()
             .expect("eth2_return requires a call stack");
 
-        let len = std::cmp::min(src_len, top.return_length);
+        let len = top.transfer_return(&memory, src_ptr, src_len).unwrap();
 
-        MemoryInstance::transfer(
-            &memory,
-            src_ptr as usize,
-            &top.memory,
-            top.return_offset as usize,
-            len as usize,
-        )
-        .unwrap();
-
-        Ok(Some(top.return_length.into()))
+        Ok(Some(len.into()))
     }
 
     /// Copies the argument data from the most recent call into memory at the
@@ -156,18 +147,9 @@ impl<'a> RootRuntime<'a> {
             .last()
             .expect("eth2_argument requires a call stack");
 
-        let len = std::cmp::min(dest_len, top.argument_length);
+        let len = top.transfer_argument(&memory, dest_ptr, dest_len).unwrap();
 
-        MemoryInstance::transfer(
-            &top.memory,
-            top.argument_offset as usize,
-            &memory,
-            dest_ptr as usize,
-            len as usize,
-        )
-        .unwrap();
-
-        Ok(Some(top.argument_length.into()))
+        Ok(Some(len.into()))
     }
 
     fn ext_expose(&self, args: RuntimeArgs) -> ExtResult {

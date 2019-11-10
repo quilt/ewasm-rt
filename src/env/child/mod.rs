@@ -102,6 +102,54 @@ impl<'a> ChildRuntime<'a> {
 
         Ok(Some(retcode.into()))
     }
+
+    /// Copies the argument data from the most recent call into memory at the
+    /// given offtet and length. Returns the actual length of the argument data.
+    ///
+    /// # Signature
+    ///
+    /// ```text
+    /// eth2_argument(dest_offset: u32, dest_length: u32) -> u32
+    /// ```
+    fn ext_argument(&self, args: RuntimeArgs) -> ExtResult {
+        let memory = self.memory();
+
+        let dest_ptr: u32 = args.nth(0);
+        let dest_len: u32 = args.nth(1);
+
+        let call_stack = self.call_stack.borrow();
+        let top = call_stack
+            .last()
+            .expect("eth2_argument requires a call stack");
+
+        let len = top.transfer_argument(&memory, dest_ptr, dest_len).unwrap();
+
+        Ok(Some(len.into()))
+    }
+
+    /// Copies data from the given offset and length into the buffer allocated
+    /// by the caller. Returns the total size of the caller's buffer.
+    ///
+    /// # Signature
+    ///
+    /// ```text
+    /// eth2_return(offset: u32, length: u32) -> u32
+    /// ```
+    fn ext_return(&self, args: RuntimeArgs) -> ExtResult {
+        let memory = self.memory();
+
+        let src_ptr: u32 = args.nth(0);
+        let src_len: u32 = args.nth(1);
+
+        let call_stack = self.call_stack.borrow();
+        let top = call_stack
+            .last()
+            .expect("eth2_return requires a call stack");
+
+        let len = top.transfer_return(&memory, src_ptr, src_len).unwrap();
+
+        Ok(Some(len.into()))
+    }
 }
 
 #[derive(Debug)]
@@ -115,6 +163,8 @@ impl<'a, 'b> Externals for ChildExternals<'a, 'b> {
     ) -> Result<Option<RuntimeValue>, Trap> {
         match index {
             externals::CALL => self.0.ext_call(args),
+            externals::ARGUMENT => self.0.ext_argument(args),
+            externals::RETURN => self.0.ext_return(args),
             _ => panic!("unknown function index"),
         }
     }
