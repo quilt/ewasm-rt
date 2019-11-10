@@ -1,7 +1,7 @@
 [package]
 name = "ewasm"
-version = "0.2.1"
-authors = ["Alex Beregszaszi <alex@rtfs.hu>", "Matt Garnett <crates@garnett.dev>", "Sam Wilson"]
+version = "0.2.2"
+authors = ["Alex Beregszaszi <alex@rtfs.hu>", "Matt Garnett <crates@garnett.dev>", "Sam Wilson <sam.wilson@consensys.net>"]
 license = "Apache-2.0"
 description = "A modular WebAssembly runtime for Ethereum 2.0."
 repository = "https://github.com/lightclient/ewasm-runtime"
