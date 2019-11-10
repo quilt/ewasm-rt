@@ -406,6 +406,13 @@ impl<'a> Execute for RootRuntime<'a> {
     fn execute(&mut self) -> [u8; 32] {
         let mut externals = RootExternals(self);
 
+        #[cfg(feature = "extra-pages")]
+        externals
+            .0
+            .memory()
+            .grow(wasmi::memory_units::Pages(100))
+            .expect("page count to increase by 100");
+
         self.0
             .instance
             .invoke_export("main", &[], &mut externals)
