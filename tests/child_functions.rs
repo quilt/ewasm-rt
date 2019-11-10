@@ -31,7 +31,7 @@ fn compile_wat(child_code: &str) -> Vec<u8> {
             (memory (export "memory") 1)
             (data (i32.const 0) "some_func")
             (data (i32.const 10) "main")
-            (data (i32.const 14) "{}")
+            (data (i32.const 22) "{}")
             (func $some_func
                 (export "some_func")
                 (result i32)
@@ -49,19 +49,25 @@ fn compile_wat(child_code: &str) -> Vec<u8> {
 
             (func $main (export "main")
                 (call $expose (i32.const 0) (i32.const 9))
-                (call $load (i32.const 0) (i32.const 14) (i32.const {}))
+                (call $load (i32.const 0) (i32.const 22) (i32.const {}))
+                (i32.store (i32.const 14) (i32.const 1234))
                 (drop
                     (call
                         $call
                         (i32.const 0)   (; Slot ;)
                         (i32.const 10)  (; Name Offset ;)
                         (i32.const 4)   (; Name Length ;)
-                        (i32.const 0)   (; Argument Offset ;)
-                        (i32.const 0)   (; Argument Length ;)
-                        (i32.const 0)   (; Return Offset ;)
-                        (i32.const 0)   (; Return Length ;)
+                        (i32.const 14)  (; Argument Offset ;)
+                        (i32.const 4)   (; Argument Length ;)
+                        (i32.const 18)  (; Return Offset ;)
+                        (i32.const 4)   (; Return Length ;)
                     )
                 )
+
+                (; Check the returned buffer from the child runtime ;)
+                (if
+                    (i32.ne (i32.load (i32.const 18)) (i32.const 4321))
+                    (then (unreachable)))
             )
         )
         "#,
@@ -77,6 +83,22 @@ fn call() {
     (module
         (import
             "env"
+            "eth2_return"
+            (func
+                $eth2_return
+                (param i32)
+                (param i32)
+                (result i32)))
+        (import
+            "env"
+            "eth2_argument"
+            (func
+                $eth2_argument
+                (param i32)
+                (param i32)
+                (result i32)))
+        (import
+            "env"
             "eth2_call"
             (func
                 $eth2_call
@@ -90,6 +112,16 @@ fn call() {
         (memory (export "memory") 1)
         (data (i32.const 0) "some_func")
         (func $main (export "main") (result i32) (local $x i32)
+            (; Check that the argument provided by the caller is 1234 ;)
+            (drop (call $eth2_argument (i32.const 10) (i32.const 4)))
+            (if
+                (i32.ne (i32.load (i32.const 10)) (i32.const 1234))
+                (then (unreachable)))
+
+            (; Return a value to the caller ;)
+            (i32.store (i32.const 10) (i32.const 4321))
+            (drop (call $eth2_return (i32.const 10) (i32.const 4)))
+
             (i32.store (i32.const 10) (i32.const 9999))
             (set_local $x
                 (call
