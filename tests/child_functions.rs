@@ -150,3 +150,83 @@ fn call() {
     let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     runtime.execute();
 }
+
+#[cfg(all(test, feature = "debug"))]
+#[cfg_attr(feature = "debug", test)]
+fn print() {
+    let child_code = r#"
+    (module
+        (import "env" "print" (func $print (param i32) (param i32)))
+        (import
+            "env"
+            "eth2_return"
+            (func
+                $eth2_return
+                (param i32)
+                (param i32)
+                (result i32)))
+        (import
+            "env"
+            "eth2_argument"
+            (func
+                $eth2_argument
+                (param i32)
+                (param i32)
+                (result i32)))
+        (import
+            "env"
+            "eth2_call"
+            (func
+                $eth2_call
+                (param i32)
+                (param i32)
+                (param i32)
+                (param i32)
+                (param i32)
+                (param i32)
+                (result i32)))
+        (memory (export "memory") 1)
+        (data (i32.const 0) "some_func")
+        (func $main (export "main") (result i32) (local $x i32)
+            (; Check that the argument provided by the caller is 1234 ;)
+            (drop (call $eth2_argument (i32.const 10) (i32.const 4)))
+            (if
+                (i32.ne (i32.load (i32.const 10)) (i32.const 1234))
+                (then (unreachable)))
+
+            (; Return a value to the caller ;)
+            (i32.store (i32.const 10) (i32.const 4321))
+            (drop (call $eth2_return (i32.const 10) (i32.const 4)))
+
+            (i32.store (i32.const 10) (i32.const 9999))
+            (set_local $x
+                (call
+                    $eth2_call
+                    (i32.const 0)
+                    (i32.const 9)
+                    (i32.const 10)
+                    (i32.const 4)
+                    (i32.const 15)
+                    (i32.const 4)))
+            (if
+                (i32.ne (get_local $x) (i32.const 6654))
+                (then (unreachable)))
+            (if
+                (i32.ne (i32.load (i32.const 15)) (i32.const 8888))
+                (then (unreachable))
+            )
+
+            (i32.const 6301)
+        )
+    )
+    "#;
+
+    let code = compile_wat(child_code);
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
+
+    runtime.set_logger(Box::new(|b| {
+        assert_eq!(b, "hello world");
+    }));
+
+    let _ = runtime.execute();
+}

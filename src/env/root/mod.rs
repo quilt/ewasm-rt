@@ -27,7 +27,7 @@ use wasmi::{
     RuntimeArgs, RuntimeValue, Trap,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct RootRuntimeWeak<'a>(Weak<Inner<'a>>);
 
 impl<'a> RootRuntimeWeak<'a> {
@@ -36,7 +36,7 @@ impl<'a> RootRuntimeWeak<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RootRuntime<'a>(Rc<Inner<'a>>);
 
 impl<'a> RootRuntime<'a> {
@@ -59,7 +59,26 @@ impl<'a> RootRuntime<'a> {
             call_targets: Default::default(),
             call_stack: Default::default(),
             buffer: Default::default(),
+
+            #[cfg(feature = "debug")]
+            logger: RefCell::new(Box::new(|s: &str| {
+                println!("{}", s);
+            })),
         }))
+    }
+
+    #[cfg(feature = "debug")]
+    pub fn set_logger(&mut self, f: Box<dyn Fn(&str)>) {
+        let mut logger = self.0.logger.borrow_mut();
+        *logger = f;
+    }
+
+    #[cfg(feature = "debug")]
+    pub(crate) fn print(&self, bytes: &[u8]) {
+        match String::from_utf8(bytes.to_vec()) {
+            Ok(s) => (*self.0.logger.borrow())(&s),
+            Err(_) => (*self.0.logger.borrow())(&format!("{:?}", bytes)),
+        }
     }
 
     pub(super) fn call(&self, name: &str, frame: StackFrame) -> i32 {
@@ -386,9 +405,22 @@ impl<'a> RootRuntime<'a> {
 
         Ok(Some(retcode.into()))
     }
+
+    #[cfg(feature = "debug")]
+    fn ext_print(&self, args: RuntimeArgs) -> ExtResult {
+        let memory = self.memory();
+
+        let ptr: u32 = args.nth(0);
+        let len: u32 = args.nth(1);
+
+        let bytes = memory.get(ptr, len as usize).unwrap();
+
+        self.print(&bytes);
+
+        Ok(None)
+    }
 }
 
-#[derive(Debug)]
 struct Inner<'a> {
     data: &'a [u8],
     pre_root: [u8; 32],
@@ -400,6 +432,9 @@ struct Inner<'a> {
 
     call_targets: RefCell<HashSet<String>>,
     call_stack: RefCell<Vec<StackFrame>>,
+
+    #[cfg(feature = "debug")]
+    logger: RefCell<Box<dyn Fn(&str)>>,
 }
 
 impl<'a> Execute for RootRuntime<'a> {
@@ -422,7 +457,6 @@ impl<'a> Execute for RootRuntime<'a> {
     }
 }
 
-#[derive(Debug)]
 struct RootExternals<'a, 'b>(&'a RootRuntime<'b>);
 
 impl<'a, 'b> Externals for RootExternals<'a, 'b> {
@@ -445,6 +479,9 @@ impl<'a, 'b> Externals for RootExternals<'a, 'b> {
             EXPOSE_FUNC_INDEX => self.0.ext_expose(args),
             ARGUMENT_FUNC_INDEX => self.0.ext_argument(args),
             RETURN_FUNC_INDEX => self.0.ext_return(args),
+
+            #[cfg(feature = "debug")]
+            self::resolver::PRINT_FUNC_INDEX => self.0.ext_print(args),
             _ => panic!("unknown function index"),
         }
     }

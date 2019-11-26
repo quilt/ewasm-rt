@@ -21,7 +21,14 @@ fn compile_wat(code: &str) -> Vec<u8> {
                 (import "env" "eth2_bufferSet" (func $buffer_set (param i32) (param i32) (param i32)))
                 (import "env" "eth2_bufferMerge" (func $buffer_merge (param i32) (param i32)))
                 (import "env" "eth2_bufferClear" (func $buffer_clear (param i32)))
+            "#,
+            #[cfg(feature = "debug")]
+            r#"
+                (import "env" "print" (func $print (param i32) (param i32)))
+            "#,
+            r#"
                 (memory (export "memory") 1)
+                (data (i32.const 1000) "hello world")
                 (func $main (export "main")
             "#,
             code,
@@ -236,4 +243,22 @@ fn buffer_clear() {
 
     // The post root should be 2 - 0 = 2
     assert_eq!(post_root, build_root(2));
+}
+
+#[cfg(all(test, feature = "debug"))]
+#[cfg_attr(feature = "debug", test)]
+fn print() {
+    let code = compile_wat(
+        r#"
+            (call $print (i32.const 1000) (i32.const 11))
+        "#,
+    );
+
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
+
+    runtime.set_logger(Box::new(|b| {
+        assert_eq!(b, "hello world");
+    }));
+
+    let _ = runtime.execute();
 }
