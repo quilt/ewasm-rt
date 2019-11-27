@@ -63,7 +63,7 @@ impl<'a> RootRuntime<'a> {
         }))
     }
 
-    pub fn set_logger<F: Fn(&str) + 'static>(&mut self, f: F) {
+    pub fn set_logger<F: Fn(&str) + 'a>(&mut self, f: F) {
         let mut logger = self.0.logger.borrow_mut();
         *logger = Some(Box::new(f));
     }
@@ -426,7 +426,7 @@ struct Inner<'a> {
     call_targets: RefCell<HashSet<String>>,
     call_stack: RefCell<Vec<StackFrame>>,
 
-    logger: RefCell<Option<Box<dyn Fn(&str)>>>,
+    logger: RefCell<Option<Box<dyn Fn(&str) + 'a>>>,
 }
 
 impl<'a> Execute for RootRuntime<'a> {

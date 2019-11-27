@@ -1,6 +1,7 @@
 mod utils;
 
 use ewasm::{Execute, RootRuntime};
+use std::{cell::RefCell, rc::Rc};
 use utils::escape;
 use wabt::wat2wasm;
 
@@ -248,11 +249,15 @@ fn print() {
         "#,
     );
 
+    let result = Rc::new(RefCell::new(String::new()));
     let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
 
     runtime.set_logger(|b| {
-        assert_eq!(b, "hello world");
+        let rc = result.clone();
+        *rc.borrow_mut() = b.to_string();
     });
 
     let _ = runtime.execute();
+
+    assert_eq!(*result.borrow(), "hello world");
 }
