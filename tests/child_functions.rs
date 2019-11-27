@@ -1,6 +1,7 @@
 mod utils;
 
 use ewasm::{Execute, RootRuntime};
+use std::{cell::RefCell, rc::Rc};
 use utils::escape;
 use wabt::wat2wasm;
 
@@ -149,4 +150,45 @@ fn call() {
 
     let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
     runtime.execute();
+}
+
+#[test]
+fn print() {
+    let child_code = r#"
+    (module
+        (import
+            "env"
+            "eth2_return"
+            (func
+                $eth2_return
+                (param i32)
+                (param i32)
+                (result i32)))
+        (import "env" "print" (func $print (param i32) (param i32)))
+        (memory (export "memory") 1)
+        (data (i32.const 0) "hello world")
+        (func $main (export "main") (result i32) (local $x i32)
+            (; print data ;)
+            (call $print (i32.const 0) (i32.const 11))
+
+            (; Return a value to the caller ;)
+            (i32.store (i32.const 10) (i32.const 4321))
+            (call $eth2_return (i32.const 10) (i32.const 4))
+
+        )
+    )
+    "#;
+
+    let code = compile_wat(child_code);
+
+    let result = Rc::new(RefCell::new(String::new()));
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
+
+    runtime.set_logger(|b| {
+        *result.borrow_mut() = b.to_string();
+    });
+
+    let _ = runtime.execute();
+
+    assert_eq!(*result.borrow(), "hello world");
 }

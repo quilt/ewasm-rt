@@ -2,6 +2,7 @@ pub mod externals {
     pub const CALL: usize = 1;
     pub const ARGUMENT: usize = 2;
     pub const RETURN: usize = 3;
+    pub const PRINT: usize = 99;
 }
 
 use wasmi::{
@@ -31,6 +32,11 @@ impl<'a> ModuleImportResolver for ChildModuleImportResolver {
                 // eth2_call(name, name_len, arg, arg_len, ret, ret_len)
                 Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
                 externals::CALL,
+            ),
+            "print" => FuncInstance::alloc_host(
+                // print(ptr, len)
+                Signature::new(&[ValueType::I32; 2][..], None),
+                externals::PRINT,
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

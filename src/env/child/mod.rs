@@ -13,7 +13,6 @@ use wasmi::{
     RuntimeArgs, RuntimeValue, Trap,
 };
 
-#[derive(Debug)]
 pub struct ChildRuntime<'a> {
     instance: ModuleRef,
     root: RootRuntimeWeak<'a>,
@@ -150,9 +149,21 @@ impl<'a> ChildRuntime<'a> {
 
         Ok(Some(len.into()))
     }
+
+    fn ext_print(&self, args: RuntimeArgs) -> ExtResult {
+        let memory = self.memory();
+
+        let ptr: u32 = args.nth(0);
+        let len: u32 = args.nth(1);
+
+        let bytes = memory.get(ptr, len as usize).unwrap();
+
+        self.root().print(&bytes);
+
+        Ok(None)
+    }
 }
 
-#[derive(Debug)]
 struct ChildExternals<'a, 'b>(&'a ChildRuntime<'b>);
 
 impl<'a, 'b> Externals for ChildExternals<'a, 'b> {
@@ -165,6 +176,7 @@ impl<'a, 'b> Externals for ChildExternals<'a, 'b> {
             externals::CALL => self.0.ext_call(args),
             externals::ARGUMENT => self.0.ext_argument(args),
             externals::RETURN => self.0.ext_return(args),
+            externals::PRINT => self.0.ext_print(args),
             _ => panic!("unknown function index"),
         }
     }

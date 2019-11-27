@@ -1,6 +1,7 @@
 mod utils;
 
 use ewasm::{Execute, RootRuntime};
+use std::{cell::RefCell, rc::Rc};
 use utils::escape;
 use wabt::wat2wasm;
 
@@ -21,7 +22,9 @@ fn compile_wat(code: &str) -> Vec<u8> {
                 (import "env" "eth2_bufferSet" (func $buffer_set (param i32) (param i32) (param i32)))
                 (import "env" "eth2_bufferMerge" (func $buffer_merge (param i32) (param i32)))
                 (import "env" "eth2_bufferClear" (func $buffer_clear (param i32)))
+                (import "env" "print" (func $print (param i32) (param i32)))
                 (memory (export "memory") 1)
+                (data (i32.const 1000) "hello world")
                 (func $main (export "main")
             "#,
             code,
@@ -236,4 +239,24 @@ fn buffer_clear() {
 
     // The post root should be 2 - 0 = 2
     assert_eq!(post_root, build_root(2));
+}
+
+#[test]
+fn print() {
+    let code = compile_wat(
+        r#"
+            (call $print (i32.const 1000) (i32.const 11))
+        "#,
+    );
+
+    let result = Rc::new(RefCell::new(String::new()));
+    let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
+
+    runtime.set_logger(|b| {
+        *result.borrow_mut() = b.to_string();
+    });
+
+    let _ = runtime.execute();
+
+    assert_eq!(*result.borrow(), "hello world");
 }
