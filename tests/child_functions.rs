@@ -185,8 +185,7 @@ fn print() {
     let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
 
     runtime.set_logger(|b| {
-        let rc = result.clone();
-        *rc.borrow_mut() = b.to_string();
+        *result.borrow_mut() = b.to_string();
     });
 
     let _ = runtime.execute();
