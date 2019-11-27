@@ -12,7 +12,7 @@ use self::resolver::{
     RuntimeModuleImportResolver, ARGUMENT_FUNC_INDEX, BLOCKDATACOPY_FUNC_INDEX,
     BLOCKDATASIZE_FUNC_INDEX, BUFFERCLEAR_FUNC_INDEX, BUFFERGET_FUNC_INDEX, BUFFERMERGE_FUNC_INDEX,
     BUFFERSET_FUNC_INDEX, CALLMODULE_FUNC_INDEX, EXPOSE_FUNC_INDEX, LOADMODULE_FUNC_INDEX,
-    LOADPRESTATEROOT_FUNC_INDEX, RETURN_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
+    LOADPRESTATEROOT_FUNC_INDEX, PRINT_FUNC_INDEX, RETURN_FUNC_INDEX, SAVEPOSTSTATEROOT_FUNC_INDEX,
 };
 
 use std::cell::RefCell;
@@ -59,25 +59,19 @@ impl<'a> RootRuntime<'a> {
             call_targets: Default::default(),
             call_stack: Default::default(),
             buffer: Default::default(),
-
-            #[cfg(feature = "debug")]
-            logger: RefCell::new(Box::new(|s: &str| {
-                println!("{}", s);
-            })),
+            logger: Default::default(),
         }))
     }
 
-    #[cfg(feature = "debug")]
-    pub fn set_logger(&mut self, f: Box<dyn Fn(&str)>) {
+    pub fn set_logger<F: Fn(&str) + 'static>(&mut self, f: F) {
         let mut logger = self.0.logger.borrow_mut();
-        *logger = f;
+        *logger = Some(Box::new(f));
     }
 
-    #[cfg(feature = "debug")]
     pub(crate) fn print(&self, bytes: &[u8]) {
-        match String::from_utf8(bytes.to_vec()) {
-            Ok(s) => (*self.0.logger.borrow())(&s),
-            Err(_) => (*self.0.logger.borrow())(&format!("{:?}", bytes)),
+        match self.0.logger.borrow().as_ref() {
+            Some(log) => log(&String::from_utf8_lossy(bytes)),
+            None => (),
         }
     }
 
@@ -406,7 +400,6 @@ impl<'a> RootRuntime<'a> {
         Ok(Some(retcode.into()))
     }
 
-    #[cfg(feature = "debug")]
     fn ext_print(&self, args: RuntimeArgs) -> ExtResult {
         let memory = self.memory();
 
@@ -433,8 +426,7 @@ struct Inner<'a> {
     call_targets: RefCell<HashSet<String>>,
     call_stack: RefCell<Vec<StackFrame>>,
 
-    #[cfg(feature = "debug")]
-    logger: RefCell<Box<dyn Fn(&str)>>,
+    logger: RefCell<Option<Box<dyn Fn(&str)>>>,
 }
 
 impl<'a> Execute for RootRuntime<'a> {
@@ -479,9 +471,7 @@ impl<'a, 'b> Externals for RootExternals<'a, 'b> {
             EXPOSE_FUNC_INDEX => self.0.ext_expose(args),
             ARGUMENT_FUNC_INDEX => self.0.ext_argument(args),
             RETURN_FUNC_INDEX => self.0.ext_return(args),
-
-            #[cfg(feature = "debug")]
-            self::resolver::PRINT_FUNC_INDEX => self.0.ext_print(args),
+            PRINT_FUNC_INDEX => self.0.ext_print(args),
             _ => panic!("unknown function index"),
         }
     }

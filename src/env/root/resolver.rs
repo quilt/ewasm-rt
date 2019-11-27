@@ -15,8 +15,6 @@ pub const EXPOSE_FUNC_INDEX: usize = 9;
 pub const ARGUMENT_FUNC_INDEX: usize = 10;
 pub const RETURN_FUNC_INDEX: usize = 11;
 pub const CALLMODULE_FUNC_INDEX: usize = 12;
-
-#[cfg(feature = "debug")]
 pub const PRINT_FUNC_INDEX: usize = 99;
 
 pub struct RuntimeModuleImportResolver;
@@ -83,7 +81,6 @@ impl<'a> ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
                 RETURN_FUNC_INDEX,
             ),
-            #[cfg(feature = "debug")]
             "print" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),
                 PRINT_FUNC_INDEX,

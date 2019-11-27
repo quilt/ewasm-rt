@@ -151,8 +151,7 @@ fn call() {
     runtime.execute();
 }
 
-#[cfg(all(test, feature = "debug"))]
-#[cfg_attr(feature = "debug", test)]
+#[test]
 fn print() {
     let child_code = r#"
     (module
@@ -182,9 +181,9 @@ fn print() {
     let code = compile_wat(child_code);
     let mut runtime = RootRuntime::new(&code, &[], [0u8; 32]);
 
-    runtime.set_logger(Box::new(|b| {
+    runtime.set_logger(|b| {
         assert_eq!(b, "hello world");
-    }));
+    });
 
     let _ = runtime.execute();
 }

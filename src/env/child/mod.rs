@@ -150,7 +150,6 @@ impl<'a> ChildRuntime<'a> {
         Ok(Some(len.into()))
     }
 
-    #[cfg(feature = "debug")]
     fn ext_print(&self, args: RuntimeArgs) -> ExtResult {
         let memory = self.memory();
 
@@ -177,8 +176,6 @@ impl<'a, 'b> Externals for ChildExternals<'a, 'b> {
             externals::CALL => self.0.ext_call(args),
             externals::ARGUMENT => self.0.ext_argument(args),
             externals::RETURN => self.0.ext_return(args),
-
-            #[cfg(feature = "debug")]
             externals::PRINT => self.0.ext_print(args),
             _ => panic!("unknown function index"),
         }

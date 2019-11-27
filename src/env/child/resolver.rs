@@ -2,8 +2,6 @@ pub mod externals {
     pub const CALL: usize = 1;
     pub const ARGUMENT: usize = 2;
     pub const RETURN: usize = 3;
-
-    #[cfg(feature = "debug")]
     pub const PRINT: usize = 99;
 }
 
@@ -35,8 +33,8 @@ impl<'a> ModuleImportResolver for ChildModuleImportResolver {
                 Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
                 externals::CALL,
             ),
-            #[cfg(feature = "debug")]
             "print" => FuncInstance::alloc_host(
+                // print(ptr, len)
                 Signature::new(&[ValueType::I32; 2][..], None),
                 externals::PRINT,
             ),
