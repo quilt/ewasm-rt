@@ -1,6 +1,6 @@
 [package]
 name = "ewasm"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Alex Beregszaszi <alex@rtfs.hu>", "Matt Garnett <crates@garnett.dev>", "Sam Wilson <sam.wilson@consensys.net>"]
 license = "Apache-2.0"
 description = "A modular WebAssembly runtime for Ethereum 2.0."
@@ -19,5 +19,4 @@ wasmi = "0.5.0"
 lazy_static = "1.4.0"
 
 [features]
-debug = []
 extra-pages = []
